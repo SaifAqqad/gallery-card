@@ -290,6 +290,7 @@ class GalleryCard extends LitElement {
     const fileNameFormat = this.config.file_name_format;
     const captionFormat = this.config.caption_format;
     const reverseSort = this.config.reverse_sort ?? true;
+    const fallbackCaption = this.config.fallback_caption;
 
     this.config.entities.forEach(entity => {
       var entityId;
@@ -304,7 +305,7 @@ class GalleryCard extends LitElement {
       }
 
       if (entityId.substring(0, 15).toLowerCase() == "media-source://") {
-        commands.push(this._loadMediaResource(hass, entityId, maximumFiles, fileNameFormat, captionFormat, recursive, reverseSort));
+        commands.push(this._loadMediaResource(hass, entityId, maximumFiles, fileNameFormat, captionFormat, recursive, reverseSort, fallbackCaption));
       }
       else {
         var entityState = hass.states[entityId];
@@ -321,7 +322,7 @@ class GalleryCard extends LitElement {
             commands.push(this._loadCameraResource(entityId, entityState));
 
           if (entityState.attributes.fileList != undefined)
-            commands.push(this._loadFilesResources(entityState.attributes.fileList, maximumFiles, fileNameFormat, captionFormat, reverseSort));
+            commands.push(this._loadFilesResources(entityState.attributes.fileList, maximumFiles, fileNameFormat, captionFormat, reverseSort, fallbackCaption));
         }
       }
     });
@@ -340,13 +341,13 @@ class GalleryCard extends LitElement {
     });
   }
 
-  _loadMediaResource(hass, contentId, maximumFiles, fileNameFormat, captionFormat, recursive, reverseSort) {
+  _loadMediaResource(hass, contentId, maximumFiles, fileNameFormat, captionFormat, recursive, reverseSort, fallBackCaption) {
     return this._loadMedia(this, hass, contentId, maximumFiles, recursive, reverseSort)
       .then(values => {
         var resources = [];
 
         values.forEach(mediaItem => {
-            var resource = this._createFileResource(mediaItem.authenticated_path, fileNameFormat, captionFormat);
+            var resource = this._createFileResource(mediaItem.authenticated_path, fileNameFormat, captionFormat, fallBackCaption);
 
             if (resource !== undefined) {
               resources.push(resource);
@@ -468,7 +469,7 @@ class GalleryCard extends LitElement {
     return Promise.resolve(resource);
   }
 
-  _loadFilesResources(files, maximumFiles, fileNameFormat, captionFormat, reverseSort) {
+  _loadFilesResources(files, maximumFiles, fileNameFormat, captionFormat, reverseSort, fallBackCaption) {
     var resources = [];
     if (files) {
       files = files.filter(file => file.indexOf("@eaDir") < 0);
@@ -488,7 +489,7 @@ class GalleryCard extends LitElement {
         if (filePath.indexOf("/config/www/") < 0)
           fileUrl = "/local/" + filePath.substring(filePath.indexOf("/www/")+5);
 
-        var resource = this._createFileResource(fileUrl, fileNameFormat, captionFormat);
+        var resource = this._createFileResource(fileUrl, fileNameFormat, captionFormat, fallBackCaption);
         
         if (resource !== undefined) {
           resources.push(resource);
@@ -499,7 +500,7 @@ class GalleryCard extends LitElement {
     return Promise.resolve(resources);
   }
 
-  _createFileResource(fileRawUrl, fileNameFormat, captionFormat) {
+  _createFileResource(fileRawUrl, fileNameFormat, captionFormat, fallBackCaption) {
     var resource;
 
     var fileUrl = fileRawUrl.split("?")[0];
@@ -525,6 +526,10 @@ class GalleryCard extends LitElement {
 
           if (searchIndex >= 0) {
             var val = fileName.substring(searchIndex, searchIndex + token.length);
+            if(isNaN(parseInt(val))){
+              fileCaption = fallBackCaption || fileName;
+              break;
+            }
             if (token == "%H" && captionFormat.indexOf("%p") >= 0) {
               hr = parseInt(val);
               if (val == "00") val = 12;
@@ -884,6 +889,10 @@ class GalleryCardEditor extends LitElement {
     return this._config.show_reload ?? false;
   }
 
+  get _fallbackCaption() {
+    return this._config.fallback_caption || "";
+  }
+  
   formatDate2Digits(str, zeroPad) {
     if (zeroPad) {
       var myString = "0" + str;
@@ -1083,6 +1092,14 @@ class GalleryCardEditor extends LitElement {
           @value-changed="${this._valueChanged}"
         ></paper-input>
         <div class="example">Your captions will look like: ${this._captionExample}</div>
+        <paper-input
+          .label="${"Fallback caption"} (${this.hass.localize(
+            "ui.panel.lovelace.editor.card.config.optional"
+          )})"
+          .value="${this._fallbackCaption}"
+          .configValue="${"fallback_caption"}"
+          @value-changed="${this._valueChanged}"
+        ></paper-input>
       </div>
     </div>
     `;
